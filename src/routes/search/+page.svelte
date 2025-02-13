@@ -39,7 +39,7 @@
 	<input
 	   type="text"
 	   bind:value={$searchQuery}
-	   placeholder="🎵 검색할 곡 제목을 입력하세요..."
+	   placeholder="🔎 Search"
 	   on:keydown={(e) => e.key === 'Enter' && searchTracks()}
 	/>
 	<button on:click={searchTracks}>검색</button>
@@ -63,21 +63,37 @@
  
  <style>
 	.search-container {
+	   margin-top: 5px;
 	   text-align: center;
 	   margin-bottom: 20px;
 	   display: flex;
 	   flex-direction: row;
+	   
 	}
 	input {
 	   padding: 10px;
 	   width: 60%;
 	   height: 45px;
-	   border: 1px solid #ccc;
-	   border-radius: 5px;
+	   border: 1px solid #7c7c7c;
+	   border-radius: 15px;
 	   font-size: 16px;
 	   box-sizing: border-box;
 	   margin-right: 20px;
+	   margin-left: 5px;
+	   background-color: #7c7c7c;
+	   color: white; /* 입력한 글자 색상 */
+	   transition: border 0.5s ease; /* 테두리 전환 효과 추가 */
+ 
+ 
 	}
+	input::placeholder {
+   color: white; /* placeholder 글자 색상 */
+ }
+ 
+ input:focus {
+   outline: none;
+   border: 2px solid white;
+ }
 	.track-list {
 	   max-width: 100%;
 	   text-align: left;
@@ -97,6 +113,10 @@
 	   width: 50px;
 	   height: 50px;
 	   margin-right: 10px;
+	}
+ 
+	h3{
+	   margin-left: 5px;
 	}
 	.search-container button {
 	   white-space: nowrap;
