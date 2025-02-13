@@ -12,6 +12,9 @@
 	import { goto } from '$app/navigation'; //곡 상세페이지로 넘어가는 함수
   import { jwtDecode } from 'jwt-decode';
   
+	// ★ 신규: 전역 플레이리스트 스토어를 임포트합니다.
+	import { playlist } from '$lib/playlistStore.js';
+  
 	const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
  
  
@@ -22,7 +25,9 @@
  
 	console.log("백엔드 URL:", import.meta.env.VITE_BACKEND_URL);
  
- 
+	
+	// 기본 볼륨 값을 50로 설정 (0 ~ 100)
+	let volume = 50;
 	let isPlaying = false;
 	let youtubePlayer;
 	let currentYouTubeVideoId = null;
@@ -195,6 +200,15 @@
 		}
 	}
  
+	// 볼륨 업데이트 함수: 슬라이더 값이 변경될 때 호출
+   function updateVolume(event) {
+	 const target = event.target;
+	 volume = +target.value; // 문자열을 숫자로 변환
+	 if (youtubePlayer) {
+	   youtubePlayer.setVolume(volume);
+	 }
+   }
+ 
 	// ✅ YouTube API 로드
 	function loadYouTubeAPI() {
 		const script = document.createElement('script');
@@ -240,27 +254,20 @@
 		loadYouTubeAPI();
 		window.addEventListener('playTrack', handlePlayTrack);
 	});
- </script>
  
- <!-- 로그인/로그아웃 버튼과 사용자 정보는 오른쪽 상단에 고정 -->
- <div class="login-header" style="position: fixed; top: 0; right: 0; z-index: 1010; padding: 10px;">
-	{#if isLoggedIn}
-		  <div class="user-info">
-			 <img
-			 src={user.picture}
-			 alt="{user.name}'s profile picture"
-			 style="width:40px; height:40px; border-radius:50%;"
-		  />                
-		  <span>반갑습니다! {user.name} 님</span>
-				 <button on:click={logout} style="margin-left: 10px;">로그아웃</button>
-		  </div>
-	{:else}
-	<button on:click={() => window.location.href = `${backendUrl}/api/google/google-login?prompt=select_account`}>
-		구글 로그인
-	</button>
+	// ✅ 플레이리스트 토글 여부 (on/off) 상태 추가 02.13 플레이리스트트
+	let showPlaylist = false;
+	function togglePlaylist() {
+		showPlaylist = !showPlaylist;
+	}
 	
-	{/if}
- </div>
+	// ★ 삭제 기능: 전달받은 인덱스의 트랙을 플레이리스트에서 제거
+	function removeFromPlaylist(index) {
+		playlist.update(tracks => tracks.filter((_, i) => i !== index));
+	}
+</script>
+ 
+ 
  
  <div class="layout">
 	<div class="sidebar">
@@ -285,9 +292,53 @@
 	</div>
  
 	<div class="main-content">
-		<h1>It Da!</h1>
+		<!-- 메인 콘텐츠 내 플레이리스트 토글 버튼 제거 -->
+		<h1 class="typing">It Da!</h1>
+		<!-- 로그인/로그아웃 및 플레이리스트 버튼 (오른쪽 상단) 02.13 플레이리스트트 -->
+ <div class="login-header" style=" top: 0; right: 0; z-index: 1010; padding: 10px;">
+	{#if isLoggedIn}
+		<div class="user-info">
+			<img
+				src={user.picture}
+				alt="{user.name}'s profile picture"
+				style="width:40px; height:40px; border-radius:50%;"
+			/>
+			<span>반갑습니다! {user.name} 님</span>
+		</div>
+		<div class="auth-buttons">
+			<button on:click={logout}>로그아웃</button>
+			<button on:click={togglePlaylist}>
+				{showPlaylist ? '플레이리스트 숨기기' : '플레이리스트 보기'}
+			</button>
+		</div>
+	{:else}
+		<button on:click={() => window.location.href = `${backendUrl}/api/google/google-login?prompt=select_account`}>
+			구글 로그인
+		</button>
+	{/if}
+ </div>
 		<slot />
 	</div>
+ 
+	{#if showPlaylist} <!-- 02.13 플레이리스트트 --> 
+		<div class="playlist">
+			<h2>Playlist</h2>
+			{#if $playlist.length > 0}
+				<ul>
+					{#each $playlist as track, index}
+						<li class="playlist-track">
+							<img src={track.album.images[0]?.url} alt="Album Cover" width="30" height="30" />
+							<span>{track.name} - {track.artists.map(artist => artist.name).join(', ')}</span>
+							<!-- 삭제 버튼: 클릭하면 removeFromPlaylist 함수 호출 -->
+							<button class="delete-btn" on:click={() => removeFromPlaylist(index)}>-</button>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p>플레이리스트가 비어 있습니다.</p>
+			{/if}
+		</div>
+	{/if}
  
 	<!-- ✅ 전역 플레이어 -->
 	<div class="player">
@@ -321,6 +372,19 @@
 					  <span>{formatTime(duration)}</span>
 				 </div>
 			 </div>
+			 <!-- 볼륨 조절 컨트롤 -->
+	   <div class="volume-control">
+		  <span>Vol</span>
+		  <input
+			 type="range"
+			 min="0"
+			 max="100"
+			 step="1"
+			 bind:value={volume}
+			 on:input={updateVolume}
+			 class="volume-slider"
+		  />
+	   </div>
 		{/if}
 	</div>
  
@@ -554,5 +618,82 @@
  
 	.login-header button:hover {
 	   background-color: hotpink;
+	}
+ 
+	/* 볼륨 컨트롤 영역 */
+ .volume-control {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	margin-left: 20px; /* 필요에 따라 위치 조정 */
+	margin-right: 50px;
+ }
+ 
+ /* 볼륨 슬라이더 스타일 */
+ .volume-slider {
+	width: 100px; /* 슬라이더 너비 조정 */
+	appearance: none;
+	background: #555;
+	height: 5px;
+	border-radius: 5px;
+	cursor: pointer;
+ }
+ 
+ /* 웹킷 기반 브라우저용 슬라이더 thumb 스타일 */
+ .volume-slider::-webkit-slider-thumb {
+	appearance: none;
+	background: #1db954;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	cursor: pointer;
+ }
+ 
+ /* 파이어폭스 등 다른 브라우저 지원 */
+ .volume-slider::-moz-range-thumb {
+	background: #1db954;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	cursor: pointer;
+ }
+ 
+ /* ===== 플레이리스트 영역 스타일 ===== 02.13 플레이리스트트 */
+ .playlist {
+		width: 250px;
+		background: rgb(255, 70, 70);
+		color: black;
+		padding: 20px;
+		overflow-y: auto;
+	}
+ 
+ .auth-buttons {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	margin-top: 10px;
+ }
+ .auth-buttons button + button {
+	margin-top: 5px;
+ }
+ 
+ .playlist-track {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 5px 0;
+ }
+ 
+	/* 삭제 버튼 스타일 */
+	.delete-btn {
+		background: none;
+		border: none;
+		font-size: 40px;
+		font-weight: bold;
+		cursor: pointer;
+		color: rgb(0, 0, 0);
+	}
+	.delete-btn:hover {
+		color: rgb(26, 190, 128);
 	}
  </style>
