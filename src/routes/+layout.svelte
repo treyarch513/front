@@ -10,17 +10,18 @@
 	import { searchResults } from '$lib/searchStore.js'; // ✅ 추가
 	import { playTrack } from '$lib/trackPlayer.js';
 	import { goto } from '$app/navigation'; //곡 상세페이지로 넘어가는 함수
-  import { jwtDecode } from 'jwt-decode';
+    import { jwtDecode } from 'jwt-decode';
   
 	// ★ 신규: 전역 플레이리스트 스토어를 임포트합니다.
 	import { playlist } from '$lib/playlistStore.js';
-  
+	import { playlistManager } from '$lib/playlistManagerStore.js';
+
 	const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
  
  
  // 로그인 상태 및 사용자 정보
- let isLoggedIn = false;
- let user = { name: '', picture: '' };
+	let isLoggedIn = false;
+	let user = { email: '', name: '', picture: '' };
  
  
 	console.log("백엔드 URL:", import.meta.env.VITE_BACKEND_URL);
@@ -37,7 +38,7 @@
 	function logout() {
 		localStorage.removeItem("jwt_token");
 		isLoggedIn = false;
-		user = { name: '', picture: '' };
+		user = { email: '', name: '', picture: '' };
 		window.location.href = "/";
 	}
  
@@ -227,9 +228,13 @@
 			 isLoggedIn = true;
 			 try {
 				 const decoded = jwtDecode(tokenFromUrl);
+				 // 디코딩된 토큰에서 email, name, picture를 추출합니다.
+				 user = {
+					 email: decoded.email,
+					 name: decoded.name,
+					 picture: decoded.picture
+				 };
 				 console.log("디코딩된 JWT:", decoded);
-				 user.name = decoded.name;
-				 user.picture = decoded.picture;
 			 } catch (error) {
 				 console.error("JWT 디코딩 오류:", error);
 			 }
@@ -240,9 +245,13 @@
 				 isLoggedIn = true;
 				 try {
 					  const decoded = jwtDecode(savedToken);
-					  console.log("디코딩된 JWT:", decoded);
-					  user.name = decoded.name;
-					  user.picture = decoded.picture;
+					  // 디코딩된 토큰에서 email, name, picture를 추출합니다.
+					  user = {
+						 email: decoded.email,
+						 name: decoded.name,
+						 picture: decoded.picture
+					 };
+					 console.log("디코딩된 JWT:", decoded);
 				 } catch (error) {
 					  console.error("JWT 디코딩 오류:", error);
 				 }
@@ -265,6 +274,66 @@
 	function removeFromPlaylist(index) {
 		playlist.update(tracks => tracks.filter((_, i) => i !== index));
 	}
+
+	let showCreatePlaylist = false;
+	let newPlaylistName = "";
+
+	function toggleCreatePlaylist() {
+		showCreatePlaylist = !showCreatePlaylist;
+	}
+
+	function createPlaylist() {
+		if (newPlaylistName.trim() !== "") {
+			// 기존 배열값은 유지한 채로 새 플레이리스트 객체를 추가합니다.
+			playlist.update(currentList => [...currentList, { id: Date.now(), name: newPlaylistName }]);
+			newPlaylistName = "";
+			showCreatePlaylist = false;
+		}
+	}
+
+	// ===============================
+	// 신규: 플레이리스트 그룹 생성을 위한 변수와 함수
+	let showCreatePlaylistGroup = false;
+	let newPlaylistGroupName = "";
+
+	function toggleCreatePlaylistGroup() {
+		showCreatePlaylistGroup = !showCreatePlaylistGroup;
+	}
+
+	function createPlaylistGroup() {
+		if (newPlaylistGroupName.trim() !== "") {
+			const newPlaylistGroup = {
+				user_id: user.email || "로그인된사용자아이디",
+				name: newPlaylistGroupName,
+				tracks: $playlist.map(track => ({
+					trackId: track.id,
+					title: track.name,
+					artist: track.artists.map(a => a.name).join(', '),
+					albumImage: track.album.images[0]?.url || ''
+				}))
+			};
+			fetch(`${backendUrl}/api/playlist`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(newPlaylistGroup)
+			})
+			.then(response => {
+				if (!response.ok) {
+					throw new Error('플레이리스트 그룹 생성 실패');
+				}
+				return response.json();
+			})
+			.then(savedGroup => {
+				playlistManager.update(groups => [...groups, savedGroup]);
+				newPlaylistGroupName = "";
+				showCreatePlaylistGroup = false;
+			})
+			.catch(error => {
+				console.error("Error creating playlist group:", error);
+			});
+		}
+	}
+	// ===============================
 </script>
  
  
@@ -283,7 +352,7 @@
 		<h3>Library</h3>
 		<ul>
 			 <li><a href="/favorites">Favorites</a></li>
-			 <li><a href="/playlist">Playlist</a></li>
+			 <li><a href="/playlistManager">Playlist</a></li>
 		</ul>
  
 		<div class="logo-container">
@@ -320,6 +389,7 @@
 		<slot />
 	</div>
  
+
 	{#if showPlaylist} <!-- 02.13 플레이리스트트 --> 
 		<div class="playlist">
 			<h2>Playlist</h2>
@@ -328,8 +398,8 @@
 					{#each $playlist as track, index}
 						<li class="playlist-track">
 							<img src={track.album.images[0]?.url} alt="Album Cover" width="30" height="30" />
-							<span>{track.name} - {track.artists.map(artist => artist.name).join(', ')}</span>
-							<!-- 삭제 버튼: 클릭하면 removeFromPlaylist 함수 호출 -->
+							<span class="track-info">{track.name} - {track.artists.map(artist => artist.name).join(', ')}</span>
+							<!-- 삭제 버튼을 오른쪽에 고정 -->
 							<button class="delete-btn" on:click={() => removeFromPlaylist(index)}>-</button>
 						</li>
 					{/each}
@@ -337,6 +407,17 @@
 			{:else}
 				<p>플레이리스트가 비어 있습니다.</p>
 			{/if}
+
+			<!-- 동일한 그룹(컨테이너) 내에서 플레이리스트 그룹 UI 추가 -->
+			<div class="playlist-group-creation">
+				{#if !showCreatePlaylistGroup}
+					<button on:click={toggleCreatePlaylistGroup}>플레이리스트 그룹 생성</button>
+				{:else}
+					<input type="text" bind:value={newPlaylistGroupName} placeholder="플레이리스트 그룹 이름 입력" />
+					<button on:click={createPlaylistGroup}>생성</button>
+					<button on:click={toggleCreatePlaylistGroup}>취소</button>
+				{/if}
+			</div>
 		</div>
 	{/if}
  
@@ -452,7 +533,7 @@
 	align-items: center;
 	margin-top: auto; /* ✅ 사이드바의 하단에 정렬 */
 	gap: 20px;
-	padding-bottom: 70px;
+ padding-bottom: 70px;
  }
  
  .logo-image {
@@ -680,20 +761,69 @@
  .playlist-track {
 	display: flex;
 	align-items: center;
-	gap: 10px;
 	padding: 5px 0;
  }
  
-	/* 삭제 버튼 스타일 */
+	/* 트랙 정보에 약간의 여백 추가 */
+	.track-info {
+		margin-left: 10px;
+	}
+	
+	/* 삭제 버튼을 오른쪽에 고정 */
 	.delete-btn {
+		margin-left: auto;
 		background: none;
 		border: none;
 		font-size: 40px;
 		font-weight: bold;
 		cursor: pointer;
-		color: rgb(0, 0, 0);
+		color: rgb(255, 255, 255);
 	}
+	
 	.delete-btn:hover {
-		color: rgb(26, 190, 128);
+		color: rgb(0, 255, 60);
+	}
+
+	.create-playlist {
+		position: fixed;
+		bottom: 80px; /* 플레이어 위쪽에 위치하도록 조정 */
+		left: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		background: rgba(255, 255, 255, 0.8);
+		padding: 5px 10px;
+		border-radius: 5px;
+	}
+	
+	.create-playlist button,
+	.create-playlist input {
+		padding: 8px 12px;
+		font-size: 14px;
+		border: none;
+		border-radius: 5px;
+		outline: none;
+	}
+	
+	.create-playlist input {
+		min-width: 150px;
+	}
+
+	/* 신규: 플레이리스트 그룹 생성 UI 스타일 */
+	.playlist-group-creation {
+		margin-top: 1rem;
+		text-align: center;
+	}
+
+	/* 버튼과 인풋이 실제 렌더링 될 때 적용되도록 :global 사용 */
+	.playlist-group-creation :global(button),
+	.playlist-group-creation :global(input) {
+		padding: 8px 12px;
+		font-size: 14px;
+		border: none;
+		border-radius: 5px;
+		outline: none;
+		margin: 0.5rem;
 	}
  </style>

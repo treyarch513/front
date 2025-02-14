@@ -221,9 +221,9 @@
 	  {/if}
 	{/if}
 	<!-- 기존 번역 버튼과 인디케이터는 삭제 (부모로 옮겼음) -->
-  </div>
+</div>
   
-  <style>
+<style>
 	.highlight {
 	  color: #1db954;
 	  font-weight: bold;
@@ -257,5 +257,5 @@
 	  text-decoration-color: #17a44d;
 	  text-decoration-thickness: 2px;
 	}
-  </style>
+</style>
   
