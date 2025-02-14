@@ -11,25 +11,33 @@
 	const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
 	let expandedGroups = {};
-	let activeTrack = null;
 
 	function toggleGroup(playlistId) {
 		expandedGroups[playlistId] = !expandedGroups[playlistId];
 	}
 
-	// 트랙 선택 시, title 필드를 fallback으로 사용하여 videoId를 가져옵니다.
-	async function selectTrack(track) {
-		// 데이터베이스에 트랙 제목은 'title'로 저장되어 있습니다.
-		const trackName = track.name || track.title;
-		const artistName = track.artist;
+	// 트랙 선택 시, 글로벌 플레이어에서 재생하도록 이벤트를 디스패치합니다.
+  async function selectTrack(track) {
+  const trackName = track.name || track.title;
+  const artistName = track.artist;
+  
+  let videoId = track.videoId;
+  if (!videoId && trackName && artistName) {
+    videoId = await getYouTubeVideo(trackName, artistName);
+  }
+  
+  // 플레이어가 기대하는 구조로 트랙 객체를 재구성합니다.
+  const formattedTrack = {
+    name: trackName,
+    artists: [{ name: artistName }],
+    album: { images: [{ url: track.albumImage }] }
+  };
 
-		if (!track.videoId && trackName && artistName) {
-			const videoId = await getYouTubeVideo(trackName, artistName);
-			activeTrack = { ...track, videoId };
-		} else {
-			activeTrack = track;
-		}
-	}
+  window.dispatchEvent(
+    new CustomEvent('playTrack', { detail: { videoId, track: formattedTrack, index: 0 } })
+  );
+}
+
 
 	onMount(async () => {
 		if (userEmail) {
@@ -87,24 +95,6 @@
 			</div>
 		{:else}
 			<p>등록된 플레이리스트가 없습니다.</p>
-		{/if}
-		{#if activeTrack}
-			<div class="active-track">
-				<h3>Now Playing: {activeTrack.name || activeTrack.title} - {activeTrack.artist}</h3>
-				{#if activeTrack.videoId}
-					<iframe
-						title="YouTube video player"
-						width="560"
-						height="315"
-						src={`https://www.youtube.com/embed/${activeTrack.videoId}?autoplay=1`}
-						frameborder="0"
-						allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-						allowfullscreen>
-					</iframe>
-				{:else}
-					<p>재생 가능한 영상이 없습니다.</p>
-				{/if}
-			</div>
 		{/if}
 	</div>
 {/if}
@@ -184,10 +174,6 @@
 	}
 	.play-btn:hover {
 		background-color: hotpink;
-	}
-	.active-track {
-		margin-top: 20px;
-		text-align: center;
 	}
 	.login-prompt {
 		text-align: center;
